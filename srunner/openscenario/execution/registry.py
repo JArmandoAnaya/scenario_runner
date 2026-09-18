@@ -33,6 +33,13 @@ class ActionExecutorRegistry(object):
         return executor(action, context)
 
 
+class ConditionExecutorRegistry(ActionExecutorRegistry):
+    """Dispatch semantic conditions without coupling them to a CARLA backend."""
+
+    def evaluate(self, condition, context):
+        return self.execute(condition, context)
+
+
 def register_variable_executors(registry):
     """Register backend-independent variable actions on a registry."""
     def set_variable(action, context):
@@ -50,4 +57,42 @@ def register_variable_executors(registry):
 
     registry.register("VariableSetAction", set_variable)
     registry.register("VariableModifyAction", modify_variable)
+    return registry
+
+
+def register_route_executors(registry):
+    """Register backend hooks for routes and trajectories."""
+    def backend_operation(action, context, operation):
+        method = getattr(context.backend, operation, None) if context.backend is not None else None
+        if method is None:
+            raise UnsupportedFeatureError(action, Diagnostic(
+                "unsupported_feature", "Backend does not implement {}".format(operation),
+                source=getattr(action, "source", None)))
+        return method(action, context)
+
+    registry.register("AssignRouteAction", lambda action, context: backend_operation(
+        action, context, "assign_route"))
+    registry.register("AcquirePositionAction", lambda action, context: backend_operation(
+        action, context, "acquire_position"))
+    registry.register("FollowTrajectoryAction", lambda action, context: backend_operation(
+        action, context, "follow_trajectory"))
+    registry.register("SpeedProfileAction", lambda action, context: backend_operation(
+        action, context, "apply_speed_profile"))
+    return registry
+
+
+def register_condition_executors(registry):
+    """Register condition hooks implemented by the selected backend."""
+    def backend_condition(condition, context, operation):
+        method = getattr(context.backend, operation, None) if context.backend is not None else None
+        if method is None:
+            raise UnsupportedFeatureError(condition, Diagnostic(
+                "unsupported_feature", "Backend does not implement {}".format(operation),
+                source=getattr(condition, "source", None)))
+        return method(condition, context)
+
+    registry.register("RelativeAngleCondition", lambda condition, context: backend_condition(
+        condition, context, "evaluate_relative_angle"))
+    registry.register("RelativeClearanceCondition", lambda condition, context: backend_condition(
+        condition, context, "evaluate_relative_clearance"))
     return registry

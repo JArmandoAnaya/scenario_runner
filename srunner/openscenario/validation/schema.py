@@ -4,7 +4,6 @@ from __future__ import absolute_import
 
 import os
 
-from srunner.openscenario.parsing.loader import load_document
 from srunner.openscenario.validation.diagnostics import Diagnostic, ValidationError
 
 
@@ -25,5 +24,6 @@ class SchemaValidator(object):
         return []
 
     def validate_document(self, source, raise_on_error=True):
+        from srunner.openscenario.parsing.loader import load_document
         document = source if hasattr(source, "root") else load_document(source)
         return self.validate(document, raise_on_error=raise_on_error)
