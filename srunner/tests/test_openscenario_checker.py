@@ -17,7 +17,7 @@ import xml.etree.ElementTree as ET
 
 from srunner.openscenario.parsing.loader import load_document
 from srunner.openscenario.validation.checker import (
-    NOT_IMPLEMENTED, RULES, Checker, rule_coverage)
+    NOT_IMPLEMENTED, RULES, Checker, rule_coverage, rules_table_markdown)
 
 TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 EXAMPLES = sorted(glob.glob(os.path.join(TESTS_DIR, "..", "examples", "*.xosc")))
@@ -397,6 +397,12 @@ class TestRegistry(unittest.TestCase):
     def test_every_implemented_rule_has_a_positive_and_a_negative_case(self):
         names = set(RULES[key].name for key in RULES)
         self.assertEqual(names, set(CASES) | set(SEPARATE))
+
+    def test_documentation_table_is_generated_from_the_registry(self):
+        with open(os.path.join(TESTS_DIR, "..", "..", "Docs", "openscenario_support.md"), encoding="utf-8") as handle:
+            text = handle.read().replace("\r\n", "\n")
+        start = text.index("<!-- checker-rules:start -->") + len("<!-- checker-rules:start -->")
+        self.assertEqual(text[start:text.index("<!-- checker-rules:end -->")].strip(), rules_table_markdown())
 
     def test_newer_rules_are_warnings_for_older_documents(self):
         source = document(minor=0, parameters=int_parameter(1, "1speed"))

@@ -102,8 +102,11 @@ To run a scenario, which is based on the OpenSCENARIO format, please run the Sce
 python scenario_runner.py --openscenario <path/to/xosc-file>
 ```
 
-Please note that the OpenSCENARIO support and the OpenSCENARIO format itself are still work in progress.
-More information you can find in [OpenSCENARIO support](openscenario_support.md)
+OpenSCENARIO 1.0 and ASAM OpenSCENARIO XML 1.3 (1.3.0 and 1.3.1) files are accepted. Each file is validated against
+the schema of the version declared in its `FileHeader`, checked against the implemented ASAM checker rules and
+audited for features ScenarioRunner cannot execute; a rejected file is reported with one diagnostic per problem
+(rule or capability, location and line) before the simulation is touched. Not every OpenSCENARIO feature is
+supported. More information you can find in [OpenSCENARIO support](openscenario_support.md)
 
 ## Running scenarios using the OpenSCENARIO 2.0 format
 

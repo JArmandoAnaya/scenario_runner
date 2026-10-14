@@ -9,7 +9,7 @@ import unittest
 import xml.etree.ElementTree as ET
 
 from srunner.openscenario.execution.capabilities import (
-    CAPABILITY_MATRIX, RUNTIME_STATES, capability_counts)
+    CAPABILITY_MATRIX, RUNTIME_STATES, capability_counts, capability_summary, capability_table_markdown)
 from srunner.openscenario.execution.feature_audit import audit_document
 from srunner.openscenario.parsing.loader import load_document
 from srunner.openscenario.validation.schema_model import schema_model
@@ -22,6 +22,7 @@ BUILT_DOCUMENTS = sorted(glob.glob(os.path.join(REPOSITORY, "srunner", "examples
                          glob.glob(os.path.join(TESTS_DIR, "fixtures", "openscenario", "*.xosc")))
 # Catalog entries used by the shipped examples are built with them.
 CATALOGS = sorted(glob.glob(os.path.join(REPOSITORY, "srunner", "examples", "catalogs", "*.xosc")))
+DOCS = os.path.join(REPOSITORY, "Docs", "openscenario_support.md")
 CONTAINERS = {"parameter_action": "ParameterAction", "variable_action": "VariableAction"}
 
 
@@ -80,6 +81,14 @@ class TestCapabilityMatrix(unittest.TestCase):
                     self.assertIn((row.element, CONTAINERS[row.category]), present)
                 else:
                     self.assertIn(row.element, tags)
+
+    def test_documentation_table_is_generated_from_the_matrix(self):
+        with open(DOCS, encoding="utf-8") as handle:
+            text = handle.read().replace("\r\n", "\n")
+        start = text.index("<!-- capability-table:start -->") + len("<!-- capability-table:start -->")
+        end = text.index("<!-- capability-table:end -->")
+        self.assertEqual(text[start:end].strip(), capability_table_markdown())
+        self.assertIn(capability_summary(), text)
 
     def test_counts(self):
         counts = capability_counts()
