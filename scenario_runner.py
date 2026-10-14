@@ -48,6 +48,8 @@ except ModuleNotFoundError:
 import carla
 
 from srunner.scenarioconfigs.openscenario_configuration import OpenScenarioConfiguration
+from srunner.openscenario.execution.registry import UnsupportedFeatureError
+from srunner.openscenario.validation.diagnostics import ValidationError
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 from srunner.scenariomanager.scenario_manager import ScenarioManager
 from srunner.scenarios.open_scenario import OpenScenario
@@ -518,7 +520,14 @@ class ScenarioRunner(object):
             for entry in self._args.openscenarioparams.split(','):
                 [key, val] = [m.strip() for m in entry.split(':')]
                 openscenario_params[key] = val
-        config = OpenScenarioConfiguration(self._args.openscenario, self.client, openscenario_params)
+        try:
+            config = OpenScenarioConfiguration(self._args.openscenario, self.client, openscenario_params)
+        except (ValidationError, UnsupportedFeatureError) as error:
+            print("The OpenSCENARIO file {} was rejected:".format(self._args.openscenario))
+            for diagnostic in error.diagnostics:
+                print("  {}".format(diagnostic))
+            self._cleanup()
+            return False
 
         result = self._load_and_run_scenario(config)
         self._cleanup()
@@ -592,7 +601,7 @@ def main():
         help="Name of the scenario to be executed. Use the preposition 'group:' to run all scenarios of one class"
              " e.g. ControlLoss or FollowLeadingVehicle",
     )
-    parser.add_argument("--openscenario", help="Provide an OpenSCENARIO definition")
+    parser.add_argument("--openscenario", help="Provide an OpenSCENARIO 1.0 or 1.3 (.xosc) definition")
     parser.add_argument('--openscenarioparams', help='Overwrited for OpenSCENARIO ParameterDeclaration')
     parser.add_argument('--openscenario2', help='Provide an openscenario2 definition')
     parser.add_argument('--route', help='Run a route as a scenario', type=str)

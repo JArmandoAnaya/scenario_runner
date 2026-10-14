@@ -13,13 +13,16 @@ class UnsupportedFeatureError(RuntimeError):
     executor yet and the legacy runtime may handle it.  Any other diagnostic is final.
     """
 
-    def __init__(self, action, diagnostic=None):
+    def __init__(self, action, diagnostic=None, diagnostics=None):
         self.action = action
-        self.diagnostic = diagnostic or Diagnostic(
+        self.diagnostics = list(diagnostics or [])
+        self.diagnostic = diagnostic or (self.diagnostics[0] if self.diagnostics else Diagnostic(
             "unsupported_feature", "No executor registered for {}".format(
                 getattr(action, "tag", None) or type(action).__name__),
-            source=getattr(action, "source", None), code=Diagnostic.NOT_MIGRATED)
-        super(UnsupportedFeatureError, self).__init__(str(self.diagnostic))
+            source=getattr(action, "source", None), code=Diagnostic.NOT_MIGRATED))
+        if not self.diagnostics:
+            self.diagnostics = [self.diagnostic]
+        super(UnsupportedFeatureError, self).__init__("; ".join(str(item) for item in self.diagnostics))
 
     @property
     def not_migrated(self):

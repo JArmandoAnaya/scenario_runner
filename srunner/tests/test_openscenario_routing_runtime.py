@@ -254,8 +254,9 @@ class TestOpenScenarioRoutingRuntime(unittest.TestCase):
                 element.append(clothoid)
             with self.assertRaises(UnsupportedFeatureError) as raised:
                 self._load(self._variant(ROUTING, edit))
-            self.assertEqual(raised.exception.diagnostic.category, "backend_capability_error")
+            self.assertEqual(raised.exception.diagnostic.category, "unsupported_feature")
             self.assertIn("Clothoid", raised.exception.diagnostic.message)
+            self.assertIsNotNone(raised.exception.diagnostic.line)
 
     def test_route_position_is_a_backend_diagnostic(self):
         def edit(root):
@@ -269,8 +270,9 @@ class TestOpenScenarioRoutingRuntime(unittest.TestCase):
                 '<InRoutePosition><FromCurrentEntity entityRef="npc"/></InRoutePosition></RoutePosition>'))
         with self.assertRaises(UnsupportedFeatureError) as raised:
             self._load(self._variant(ROUTING, edit))
-        self.assertEqual(raised.exception.diagnostic.category, "backend_capability_error")
-        self.assertIn("RoutePosition", raised.exception.diagnostic.message)
+        messages = [diagnostic.message for diagnostic in raised.exception.diagnostics]
+        self.assertEqual(raised.exception.diagnostic.category, "unsupported_feature")
+        self.assertTrue(any("RoutePosition" in message for message in messages), messages)
 
     def test_modify_action_without_rule_is_reported(self):
         def edit(root):
@@ -349,7 +351,8 @@ class TestOpenScenarioRoutingRuntime(unittest.TestCase):
             root.find(".//RelativeAngleCondition").set("coordinateSystem", "lane")
         with self.assertRaises(UnsupportedFeatureError) as raised:
             self._load(self._variant(PRIVATE_1_3, edit))
-        self.assertEqual(raised.exception.diagnostic.category, "backend_capability_error")
+        self.assertEqual(raised.exception.diagnostic.category, "unsupported_feature")
+        self.assertIn("coordinateSystem 'lane'", raised.exception.diagnostic.message)
 
     def test_unknown_entity_condition_is_reported_not_returned_as_none(self):
         condition = ET.fromstring(

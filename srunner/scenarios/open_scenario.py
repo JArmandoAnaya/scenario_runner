@@ -36,6 +36,7 @@ from srunner.openscenario.compatibility.global_parameters import GlobalParameter
 from srunner.openscenario.execution.context import ExecutionContext
 from srunner.openscenario.compatibility.backend import build_private_action
 from srunner.openscenario.execution.registry import UnsupportedFeatureError, default_registry
+from srunner.openscenario.model.document import OpenScenarioDocument
 from srunner.openscenario.parsing.loader import load_document
 from srunner.openscenario.validation.diagnostics import diagnostics_as_validation_error
 
@@ -48,7 +49,12 @@ def create_execution_context(config):
     legacy consumers and semantic actions share one parameter state. Semantic errors raise
     a ValidationError carrying the diagnostics.
     """
-    document = load_document(config.xml_tree)
+    loaded = getattr(config, 'document', None)
+    if loaded is not None:
+        # Fresh parameter and variable stores per scenario instance; keep the source line information.
+        document = OpenScenarioDocument(loaded.root, loaded.version, loaded.source, loaded.lines)
+    else:
+        document = load_document(config.xml_tree)
     context = ExecutionContext.for_document(
         document, parameter_overrides=getattr(config, '_custom_params', None),
         parameter_binding=GlobalParameterMapping(), state={"configuration": config})

@@ -24,6 +24,7 @@ from srunner.tools.openscenario_parser import OpenScenarioParser, ParameterRef
 from srunner.openscenario.compatibility.attributes import resolve_attribute
 from srunner.openscenario.compatibility.global_parameters import GlobalParameterMapping
 from srunner.openscenario.execution.context import ExecutionContext
+from srunner.openscenario.execution.feature_audit import audit_document, raise_for_unsupported
 from srunner.openscenario.parsing.loader import load_document
 from srunner.openscenario.validation.diagnostics import diagnostics_as_validation_error
 from srunner.openscenario.validation.checker import SCHEMA_RULE, Checker
@@ -83,9 +84,14 @@ class OpenScenarioConfiguration(ScenarioConfiguration):
         Load the OpenSCENARIO file and validate it against the schema of its declared version
         (FileHeader revMajor/revMinor).
 
-        Raises ValidationError listing every schema violation, or an unsupported version.
+        Raises ValidationError listing every schema violation, or an unsupported version, and
+        UnsupportedFeatureError for documents that are not scenario definitions (catalogs,
+        parameter value distributions).
         """
-        return SchemaValidator().load(self.filename)
+        document = SchemaValidator().load(self.filename)
+        if document.root.find("Storyboard") is None:
+            raise_for_unsupported(audit_document(document))
+        return document
 
     def _validate_openscenario_catalog_configuration(self, catalog_path):
         """
@@ -110,12 +116,23 @@ class OpenScenarioConfiguration(ScenarioConfiguration):
         OpenScenarioParser.set_osc_filepath(os.path.dirname(self.filename))
 
         self._load_catalogs()
+        self._audit_features()
         self._set_scenario_name()
         self._set_carla_town()
         self._set_actor_information()
 
         self._set_traffic_signal_controller()
         self._validate_result()
+
+    def _audit_features(self):
+        """
+        Reject schema-valid features the ScenarioRunner backend cannot execute before anything is built.
+        """
+        diagnostics = audit_document(self.document, self.catalogs, self._custom_params)
+        for diagnostic in diagnostics:
+            if not diagnostic.is_error:
+                self.logger.warning(" %s", diagnostic)
+        raise_for_unsupported(diagnostics)
 
     def _load_catalogs(self):
         """
@@ -253,6 +270,8 @@ class OpenScenarioConfiguration(ScenarioConfiguration):
                 self.logger.warning(" %s", diagnostic)
         context.raise_for_errors()
         self._parameter_evaluation = context.evaluation
+        # Configuration-time consumers (initial positions and speeds) may use ${...} expressions.
+        OpenScenarioParser.set_execution_context(context)
         parameters = context.evaluation.parameters
         for name in parameters.names():
             self._global_parameters[name] = parameters.raw(name)
