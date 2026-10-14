@@ -26,6 +26,7 @@ from srunner.openscenario.compatibility.global_parameters import GlobalParameter
 from srunner.openscenario.execution.context import ExecutionContext
 from srunner.openscenario.parsing.loader import load_document
 from srunner.openscenario.validation.diagnostics import diagnostics_as_validation_error
+from srunner.openscenario.validation.checker import SCHEMA_RULE, Checker
 from srunner.openscenario.validation.schema import SchemaValidator
 
 
@@ -241,11 +242,15 @@ class OpenScenarioConfiguration(ScenarioConfiguration):
                 elem, _ = OpenScenarioParser.set_parameters(elem)
 
         OpenScenarioParser.set_global_parameters(self._global_parameters)
-        # Evaluate ${...} / $ref declaration values for configuration-time consumers.
+        # Evaluate ${...} / $ref declaration values for configuration-time consumers, and run the
+        # semantic validation and checker rules before anything is spawned or loaded.
         document = getattr(self, "document", None) or load_document(self.xml_tree)
         context = ExecutionContext.for_document(
             document, parameter_overrides=self._custom_params,
-            parameter_binding=GlobalParameterMapping())
+            parameter_binding=GlobalParameterMapping(), checker=Checker(exclude=(SCHEMA_RULE,)))
+        for diagnostic in context.diagnostics:
+            if not diagnostic.is_error:
+                self.logger.warning(" %s", diagnostic)
         context.raise_for_errors()
         self._parameter_evaluation = context.evaluation
         parameters = context.evaluation.parameters

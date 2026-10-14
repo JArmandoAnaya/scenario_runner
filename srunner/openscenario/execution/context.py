@@ -26,23 +26,26 @@ class ExecutionContext(object):
 
     @classmethod
     def for_document(cls, document, backend=None, capabilities=None, parameter_overrides=None, state=None,
-                     parameter_binding=None, validator=None):
+                     parameter_binding=None, validator=None, checker=None):
         """Create a context whose evaluation state is the document's parameter and variable stores.
 
         ``parameter_overrides`` are the user-supplied parameter values (for
         example ``--openscenarioparams``).  ``parameter_binding`` is an optional
         mutable mapping the parameter store mirrors (the runtime's global
-        parameter dictionary).  Construction does not raise on document errors;
-        they are collected in ``diagnostics`` (see :meth:`raise_for_errors`).
+        parameter dictionary).  ``checker`` (a :class:`Checker`) adds the Annex C
+        checker-rule diagnostics; a semantic error on an element that a checker
+        rule already reports is dropped in favour of the rule diagnostic.
+        Construction does not raise on document errors; they are collected in
+        ``diagnostics`` (see :meth:`raise_for_errors`).
         An unexpected evaluation failure is raised as ValidationError.
         """
         with diagnostics_as_validation_error():
             return cls._for_document(document, backend, capabilities, parameter_overrides, state,
-                                     parameter_binding, validator)
+                                     parameter_binding, validator, checker)
 
     @classmethod
     def _for_document(cls, document, backend, capabilities, parameter_overrides, state, parameter_binding,
-                      validator):
+                      validator, checker):
         diagnostics = []
         parameters = document.parameter_store
         variables = document.variable_store
@@ -77,6 +80,14 @@ class ExecutionContext(object):
         diagnostics = [item for item in diagnostics
                        if item.code != Diagnostic.UNKNOWN_REFERENCE or id(item.source) not in reported]
         diagnostics.extend(validation)
+        if checker is not None:
+            findings = checker.check(document, parameter_overrides=parameter_overrides)
+            covered = set(id(item.source) for item in findings if item.is_error and item.source is not None)
+            diagnostics = [item for item in diagnostics
+                           if not (item.is_error and item.source is not None and id(item.source) in covered)]
+            diagnostics.extend(findings)
+        for diagnostic in diagnostics:
+            diagnostic.locate(document)
         state = state if state is not None else {}
         state["evaluation"] = evaluation
         return cls(backend=backend, capabilities=capabilities, state=state, document=document,

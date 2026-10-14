@@ -245,7 +245,7 @@ class TestOpenScenarioRoutingRuntime(unittest.TestCase):
 
     def test_unsupported_trajectory_shapes_are_backend_diagnostics(self):
         clothoid = ET.fromstring(
-            '<Shape><Clothoid curvature="0.01" curvatureDot="0" length="20">'
+            '<Shape><Clothoid curvature="0.01" curvatureDot="0" length="20" startTime="0" stopTime="5">'
             '<Position><WorldPosition x="0" y="5" z="0" h="0"/></Position></Clothoid></Shape>')
         for trajectory in ("InitTrajectory", "StoryTrajectory"):
             def edit(root, name=trajectory):
@@ -262,7 +262,10 @@ class TestOpenScenarioRoutingRuntime(unittest.TestCase):
             position = root.find(".//Event[@name='StoryAcquirePosition']//AcquirePositionAction/Position")
             position.remove(position[0])
             position.append(ET.fromstring(
-                '<RoutePosition><RouteRef><CatalogReference catalogName="Routes" entryName="r"/></RouteRef>'
+                '<RoutePosition><RouteRef><Route name="r" closed="false">'
+                '<Waypoint routeStrategy="shortest"><Position><WorldPosition x="0" y="0"/></Position></Waypoint>'
+                '<Waypoint routeStrategy="shortest"><Position><WorldPosition x="9" y="0"/></Position></Waypoint>'
+                '</Route></RouteRef>'
                 '<InRoutePosition><FromCurrentEntity entityRef="npc"/></InRoutePosition></RoutePosition>'))
         with self.assertRaises(UnsupportedFeatureError) as raised:
             self._load(self._variant(ROUTING, edit))
