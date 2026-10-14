@@ -75,7 +75,8 @@ class TestAttributeResolutionEntryPoints(unittest.TestCase):
         self._patches = [
             mock.patch.object(CarlaDataProvider, "_global_osc_parameters", {}),
             # ${...} is not valid against the bundled 1.0 XSD.
-            mock.patch.object(OpenScenarioConfiguration, "_validate_openscenario_configuration"),
+            mock.patch.object(OpenScenarioConfiguration, "_validate_openscenario_configuration", autospec=True,
+                              side_effect=lambda configuration: OpenScenarioLoader().load(configuration.filename)),
         ]
         for patch in self._patches:
             patch.start()

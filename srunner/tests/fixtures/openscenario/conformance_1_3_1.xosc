@@ -1,0 +1,289 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<OpenSCENARIO>
+  <FileHeader revMajor="1" revMinor="3" date="2026-10-14T12:00:00" description="CARLA:Conformance131" author="ScenarioRunner"/>
+  <ParameterDeclarations>
+    <ParameterDeclaration name="BaseSpeed" parameterType="double" value="5.0"/>
+    <ParameterDeclaration name="SpeedFactor" parameterType="int" value="2"/>
+    <ParameterDeclaration name="TargetSpeed" parameterType="double" value="${$BaseSpeed * $SpeedFactor}"/>
+    <ParameterDeclaration name="StopTime" parameterType="double" value="60"/>
+  </ParameterDeclarations>
+  <VariableDeclarations>
+    <VariableDeclaration name="Stage" variableType="int" value="0"/>
+    <VariableDeclaration name="Mode" variableType="string" value="idle"/>
+  </VariableDeclarations>
+  <CatalogLocations/>
+  <RoadNetwork>
+    <LogicFile filepath="Town01"/>
+  </RoadNetwork>
+  <Entities>
+    <ScenarioObject name="hero">
+      <Vehicle name="vehicle.tesla.model3" vehicleCategory="car">
+        <Performance maxSpeed="69.444" maxAcceleration="200" maxDeceleration="10.0"/>
+        <BoundingBox>
+          <Center x="1.5" y="0.0" z="0.9"/>
+          <Dimensions width="2.1" length="4.5" height="1.8"/>
+        </BoundingBox>
+        <Axles>
+          <FrontAxle maxSteering="0.5" wheelDiameter="0.6" trackWidth="1.8" positionX="3.1" positionZ="0.3"/>
+          <RearAxle maxSteering="0.0" wheelDiameter="0.6" trackWidth="1.8" positionX="0.0" positionZ="0.3"/>
+        </Axles>
+        <Properties>
+          <Property name="type" value="ego_vehicle"/>
+        </Properties>
+      </Vehicle>
+    </ScenarioObject>
+    <ScenarioObject name="parked">
+      <MiscObject name="static.prop.streetbarrier" mass="10" miscObjectCategory="obstacle">
+        <BoundingBox>
+          <Center x="0" y="0" z="0.5"/>
+          <Dimensions width="0.5" length="2" height="1"/>
+        </BoundingBox>
+      </MiscObject>
+    </ScenarioObject>
+    <ScenarioObject name="npc">
+      <Vehicle name="vehicle.audi.tt" vehicleCategory="car">
+        <Performance maxSpeed="69.444" maxAcceleration="200" maxDeceleration="10.0"/>
+        <BoundingBox>
+          <Center x="1.5" y="0.0" z="0.9"/>
+          <Dimensions width="2.1" length="4.5" height="1.8"/>
+        </BoundingBox>
+        <Axles>
+          <FrontAxle maxSteering="0.5" wheelDiameter="0.6" trackWidth="1.8" positionX="3.1" positionZ="0.3"/>
+          <RearAxle maxSteering="0.0" wheelDiameter="0.6" trackWidth="1.8" positionX="0.0" positionZ="0.3"/>
+        </Axles>
+        <Properties>
+          <Property name="type" value="simulation"/>
+        </Properties>
+      </Vehicle>
+    </ScenarioObject>
+  </Entities>
+  <Storyboard>
+    <Init>
+      <Actions>
+        <GlobalAction>
+          <VariableAction variableRef="Stage">
+            <SetAction value="1"/>
+          </VariableAction>
+        </GlobalAction>
+        <Private entityRef="hero">
+          <PrivateAction>
+            <TeleportAction>
+              <Position>
+                <WorldPosition x="0" y="2" z="0" h="0"/>
+              </Position>
+            </TeleportAction>
+          </PrivateAction>
+        </Private>
+        <Private entityRef="parked">
+          <PrivateAction>
+            <TeleportAction>
+              <Position>
+                <RelativeWorldPosition entityRef="hero" dx="${$BaseSpeed * 4}" dy="3" dz="0"/>
+              </Position>
+            </TeleportAction>
+          </PrivateAction>
+        </Private>
+        <Private entityRef="npc">
+          <PrivateAction>
+            <TeleportAction>
+              <Position>
+                <WorldPosition x="${$BaseSpeed + 5}" y="2" z="0" h="0"/>
+              </Position>
+            </TeleportAction>
+          </PrivateAction>
+          <PrivateAction>
+            <LongitudinalAction>
+              <SpeedAction>
+                <SpeedActionDynamics dynamicsShape="step" value="0" dynamicsDimension="time"/>
+                <SpeedActionTarget>
+                  <AbsoluteTargetSpeed value="${$BaseSpeed * 2}"/>
+                </SpeedActionTarget>
+              </SpeedAction>
+            </LongitudinalAction>
+          </PrivateAction>
+        </Private>
+      </Actions>
+    </Init>
+    <Story name="ConformanceStory">
+      <Act name="Main">
+        <ManeuverGroup maximumExecutionCount="1" name="NpcGroup">
+          <Actors selectTriggeringEntities="false">
+            <EntityRef entityRef="npc"/>
+          </Actors>
+          <Maneuver name="NpcManeuver">
+            <Event name="Accelerate" priority="override">
+              <Action name="AccelerateAction">
+                <PrivateAction>
+                  <LongitudinalAction>
+                    <SpeedAction>
+                      <SpeedActionDynamics dynamicsShape="linear" value="${$TargetSpeed / 2}" dynamicsDimension="time" followingMode="follow"/>
+                      <SpeedActionTarget>
+                        <AbsoluteTargetSpeed value="$TargetSpeed"/>
+                      </SpeedActionTarget>
+                    </SpeedAction>
+                  </LongitudinalAction>
+                </PrivateAction>
+              </Action>
+              <Action name="AdvanceStage">
+                <GlobalAction>
+                  <VariableAction variableRef="Stage">
+                    <ModifyAction>
+                      <Rule>
+                        <AddValue value="1"/>
+                      </Rule>
+                    </ModifyAction>
+                  </VariableAction>
+                </GlobalAction>
+              </Action>
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition name="StageOne" delay="0" conditionEdge="none">
+                    <ByValueCondition>
+                      <VariableCondition variableRef="Stage" value="1" rule="equalTo"/>
+                    </ByValueCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+            </Event>
+            <Event name="FollowRoute" priority="parallel">
+              <Action name="FollowRouteAction">
+                <PrivateAction>
+                  <RoutingAction>
+                    <AssignRouteAction>
+                      <Route name="ConformanceRoute" closed="false">
+                        <Waypoint routeStrategy="shortest">
+                          <Position>
+                            <WorldPosition x="10" y="2" z="0" h="0"/>
+                          </Position>
+                        </Waypoint>
+                        <Waypoint routeStrategy="shortest">
+                          <Position>
+                            <RelativeObjectPosition entityRef="hero" dx="15" dy="0"/>
+                          </Position>
+                        </Waypoint>
+                        <Waypoint routeStrategy="fastest">
+                          <Position>
+                            <LanePosition roadId="1" laneId="-1" s="${$BaseSpeed * 4}" offset="0"/>
+                          </Position>
+                        </Waypoint>
+                      </Route>
+                    </AssignRouteAction>
+                  </RoutingAction>
+                </PrivateAction>
+              </Action>
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition name="SameHeading" delay="0" conditionEdge="none">
+                    <ByEntityCondition>
+                      <TriggeringEntities triggeringEntitiesRule="any">
+                        <EntityRef entityRef="npc"/>
+                      </TriggeringEntities>
+                      <EntityCondition>
+                        <RelativeAngleCondition entityRef="hero" angleType="heading" angle="0.0" angleTolerance="0.1" coordinateSystem="entity"/>
+                      </EntityCondition>
+                    </ByEntityCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+            </Event>
+            <Event name="Profile" priority="parallel">
+              <Action name="ProfileAction">
+                <PrivateAction>
+                  <LongitudinalAction>
+                    <SpeedProfileAction followingMode="follow">
+                      <SpeedProfileEntry speed="${$BaseSpeed}" time="2.0"/>
+                      <SpeedProfileEntry speed="$TargetSpeed"/>
+                    </SpeedProfileAction>
+                  </LongitudinalAction>
+                </PrivateAction>
+              </Action>
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition name="ClearAhead" delay="0" conditionEdge="none">
+                    <ByEntityCondition>
+                      <TriggeringEntities triggeringEntitiesRule="any">
+                        <EntityRef entityRef="npc"/>
+                      </TriggeringEntities>
+                      <EntityCondition>
+                        <RelativeClearanceCondition oppositeLanes="false" distanceForward="20.0" distanceBackward="5.0" freeSpace="false">
+                          <RelativeLaneRange from="0" to="0"/>
+                          <EntityRef entityRef="hero"/>
+                        </RelativeClearanceCondition>
+                      </EntityCondition>
+                    </ByEntityCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+            </Event>
+            <Event name="Trajectory" priority="parallel">
+              <Action name="TrajectoryAction">
+                <PrivateAction>
+                  <RoutingAction>
+                    <FollowTrajectoryAction>
+                      <TrajectoryRef>
+                        <Trajectory name="ConformanceTrajectory" closed="false">
+                          <Shape>
+                            <Polyline>
+                              <Vertex time="0">
+                                <Position>
+                                  <WorldPosition x="10" y="2" z="0" h="0"/>
+                                </Position>
+                              </Vertex>
+                              <Vertex time="${$SpeedFactor * 2}">
+                                <Position>
+                                  <WorldPosition x="30" y="2" z="0" h="0"/>
+                                </Position>
+                              </Vertex>
+                            </Polyline>
+                          </Shape>
+                        </Trajectory>
+                      </TrajectoryRef>
+                      <TimeReference>
+                        <Timing domainAbsoluteRelative="relative" offset="0" scale="1"/>
+                      </TimeReference>
+                      <TrajectoryFollowingMode followingMode="follow"/>
+                    </FollowTrajectoryAction>
+                  </RoutingAction>
+                </PrivateAction>
+              </Action>
+              <StartTrigger>
+                <ConditionGroup>
+                  <Condition name="ModeIdle" delay="0" conditionEdge="none">
+                    <ByValueCondition>
+                      <VariableCondition variableRef="Mode" value="idle" rule="equalTo"/>
+                    </ByValueCondition>
+                  </Condition>
+                </ConditionGroup>
+              </StartTrigger>
+            </Event>
+          </Maneuver>
+        </ManeuverGroup>
+        <StartTrigger>
+          <ConditionGroup>
+            <Condition name="ActStart" delay="0" conditionEdge="none">
+              <ByValueCondition>
+                <SimulationTimeCondition value="0" rule="greaterThan"/>
+              </ByValueCondition>
+            </Condition>
+          </ConditionGroup>
+        </StartTrigger>
+      </Act>
+    </Story>
+    <StopTrigger>
+      <ConditionGroup>
+        <Condition name="TimeIsUp" delay="0" conditionEdge="rising">
+          <ByValueCondition>
+            <SimulationTimeCondition value="$StopTime" rule="greaterThan"/>
+          </ByValueCondition>
+        </Condition>
+      </ConditionGroup>
+      <ConditionGroup>
+        <Condition name="criteria_CollisionTest" delay="0" conditionEdge="rising">
+          <ByValueCondition>
+            <ParameterCondition parameterRef="" value="" rule="lessThan"/>
+          </ByValueCondition>
+        </Condition>
+      </ConditionGroup>
+    </StopTrigger>
+  </Storyboard>
+</OpenSCENARIO>

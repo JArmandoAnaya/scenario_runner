@@ -16,13 +16,51 @@ from srunner.openscenario.model.references import (
     invalid)
 
 
+class SourceLocations(object):
+    """Source lines, parents and XPath-like paths of a document's elements."""
+
+    def __init__(self, root, lines):
+        self.root = root
+        self.lines = lines
+        self._parents = None
+
+    def line(self, element):
+        """Source line of ``element`` when the document was parsed with line tracking."""
+        return self.lines.get(element)
+
+    def parent(self, element):
+        if self._parents is None:
+            self._parents = dict((child, parent) for parent in self.root.iter() for child in parent)
+        return self._parents.get(element)
+
+    def path(self, element):
+        """XPath-like location of ``element``, using ``name`` attributes where present."""
+        steps = []
+        while element is not None:
+            parent = self.parent(element)
+            if parent is None and element is not self.root:
+                return None
+            step = element.tag
+            if element.attrib.get("name") is not None:
+                step += "[@name={!r}]".format(element.attrib["name"])
+            elif parent is not None:
+                siblings = [child for child in parent if child.tag == element.tag]
+                if len(siblings) > 1:
+                    step += "[{}]".format(siblings.index(element) + 1)
+            steps.append(step)
+            element = parent
+        return "/" + "/".join(reversed(steps))
+
+
 class OpenScenarioDocument(object):
     """A parsed document retaining XML and typed semantic declarations."""
 
-    def __init__(self, root, version, source=None):
+    def __init__(self, root, version, source=None, lines=None):
         self.root = root
         self.version = version
         self.source = source
+        self.lines = lines if lines is not None else {}
+        self.locations = SourceLocations(root, self.lines)
         self.parameter_declarations = self._read_parameters(root)
         self.variable_declarations = self._read_variables(root)
         self.catalog_references = self._read_catalog_references(root)

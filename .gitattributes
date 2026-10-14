@@ -1,0 +1,2 @@
+# Official ASAM schema files are kept byte-identical, including their header whitespace.
+srunner/openscenario/schemas/** -whitespace

@@ -14,8 +14,6 @@ import os
 import time
 import xml.etree.ElementTree as ET
 
-import xmlschema
-
 import carla
 
 # pylint: disable=line-too-long
@@ -28,6 +26,7 @@ from srunner.openscenario.compatibility.global_parameters import GlobalParameter
 from srunner.openscenario.execution.context import ExecutionContext
 from srunner.openscenario.parsing.loader import load_document
 from srunner.openscenario.validation.diagnostics import diagnostics_as_validation_error
+from srunner.openscenario.validation.schema import SchemaValidator
 
 
 class OpenScenarioConfiguration(ScenarioConfiguration):
@@ -37,15 +36,19 @@ class OpenScenarioConfiguration(ScenarioConfiguration):
     - Only one Story + Init is supported per Storyboard
     """
 
+    logger = logging.getLogger("[SR:OpenScenarioConfiguration]")
+
     def __init__(self, filename, client, custom_params):
 
         super(OpenScenarioConfiguration, self).__init__()
 
-        self.xml_tree = ET.parse(filename)
         self.filename = filename
         self._custom_params = custom_params if custom_params is not None else {}
 
-        self._validate_openscenario_configuration()
+        logging.basicConfig()
+
+        self.document = self._validate_openscenario_configuration()
+        self.xml_tree = ET.ElementTree(self.document.root)
         self.client = client
 
         self.catalogs = {}
@@ -58,9 +61,6 @@ class OpenScenarioConfiguration(ScenarioConfiguration):
         self.storyboard = self.xml_tree.find("Storyboard")
         self.stories = self.storyboard.findall("Story")
         self.init = self.storyboard.find("Init")
-
-        logging.basicConfig()
-        self.logger = logging.getLogger("[SR:OpenScenarioConfiguration]")
 
         self._global_parameters = {}
         self._parameter_evaluation = None
@@ -79,23 +79,28 @@ class OpenScenarioConfiguration(ScenarioConfiguration):
 
     def _validate_openscenario_configuration(self):
         """
-        Validate the given OpenSCENARIO config against the 1.0 XSD
+        Load the OpenSCENARIO file and validate it against the schema of its declared version
+        (FileHeader revMajor/revMinor).
 
-        Note: This will throw if the config is not valid. But this is fine here.
+        Raises ValidationError listing every schema violation, or an unsupported version.
         """
-        xsd_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../openscenario/OpenSCENARIO.xsd")
-        xsd = xmlschema.XMLSchema(xsd_file)
-        xsd.validate(self.xml_tree)
+        return SchemaValidator().load(self.filename)
 
-    def _validate_openscenario_catalog_configuration(self, catalog_xml_tree):
+    def _validate_openscenario_catalog_configuration(self, catalog_path):
         """
-        Validate the given OpenSCENARIO catalog config against the 1.0 XSD
+        Load and validate a catalog file against the schema of its declared version.
 
-        Note: This will throw if the catalog config is not valid. But this is fine here.
+        Catalogs declaring a pre-1.0 header (as the shipped example catalogs do) are validated
+        against the 1.0 schema, which is what earlier releases did for every catalog.
         """
-        xsd_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "../openscenario/OpenSCENARIO.xsd")
-        xsd = xmlschema.XMLSchema(xsd_file)
-        xsd.validate(catalog_xml_tree)
+        document = load_document(catalog_path)
+        schema = None
+        if document.version.major == 0:
+            schema = "1.0"
+            self.logger.warning(" Catalog %s declares OpenSCENARIO %s; validating it against the 1.0 schema",
+                                catalog_path, document.version)
+        SchemaValidator().validate(document, schema=schema)
+        return document
 
     def _parse_openscenario_configuration(self):
         """
@@ -103,7 +108,6 @@ class OpenScenarioConfiguration(ScenarioConfiguration):
         """
         OpenScenarioParser.set_osc_filepath(os.path.dirname(self.filename))
 
-        self._check_version()
         self._load_catalogs()
         self._set_scenario_name()
         self._set_carla_town()
@@ -111,14 +115,6 @@ class OpenScenarioConfiguration(ScenarioConfiguration):
 
         self._set_traffic_signal_controller()
         self._validate_result()
-
-    def _check_version(self):
-        """
-        Ensure correct OpenSCENARIO version is used
-        """
-        header = self.xml_tree.find("FileHeader")
-        if not (header.attrib.get('revMajor') == "1" and header.attrib.get('revMinor') == "0"):
-            raise AttributeError("Only OpenSCENARIO 1.0 is supported")
 
     def _load_catalogs(self):
         """
@@ -150,9 +146,7 @@ class OpenScenarioConfiguration(ScenarioConfiguration):
             if not os.path.isfile(catalog_path):
                 self.logger.warning(" The %s path for the %s Catalog is invalid", catalog_path, catalog_type)
             else:
-                xml_tree = ET.parse(catalog_path)
-                self._validate_openscenario_catalog_configuration(xml_tree)
-                catalog = xml_tree.find("Catalog")
+                catalog = self._validate_openscenario_catalog_configuration(catalog_path).root.find("Catalog")
                 catalog_name = catalog.attrib.get("name")
                 self.catalogs[catalog_name] = {}
                 for entry in catalog:
@@ -248,8 +242,9 @@ class OpenScenarioConfiguration(ScenarioConfiguration):
 
         OpenScenarioParser.set_global_parameters(self._global_parameters)
         # Evaluate ${...} / $ref declaration values for configuration-time consumers.
+        document = getattr(self, "document", None) or load_document(self.xml_tree)
         context = ExecutionContext.for_document(
-            load_document(self.xml_tree), parameter_overrides=self._custom_params,
+            document, parameter_overrides=self._custom_params,
             parameter_binding=GlobalParameterMapping())
         context.raise_for_errors()
         self._parameter_evaluation = context.evaluation

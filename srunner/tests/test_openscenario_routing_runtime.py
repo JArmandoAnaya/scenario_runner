@@ -74,27 +74,15 @@ class TestOpenScenarioRoutingRuntime(unittest.TestCase):
         shutil.rmtree(self.tmp)
 
     @staticmethod
-    def _load(path, schema_gate=True):
-        """Build the scenario; without ``schema_gate`` the 1.0-only version and XSD checks are bypassed."""
-        patches = []
-        if not schema_gate:
-            patches = [mock.patch.object(OpenScenarioConfiguration, "_check_version", lambda self: None),
-                       mock.patch.object(OpenScenarioConfiguration, "_validate_openscenario_configuration",
-                                         lambda self: None)]
-        for patch in patches:
-            patch.start()
-        try:
-            client = carla.Client()
-            config = OpenScenarioConfiguration(path, client, {})
-            CarlaDataProvider.set_client(client)
-            ego_vehicles = [CarlaDataProvider.request_new_actor(vehicle.model, vehicle.transform, vehicle.rolename,
-                                                                color=vehicle.color, actor_category=vehicle.category)
-                            for vehicle in config.ego_vehicles]
-            return OpenScenario(world=client.get_world(), ego_vehicles=ego_vehicles, config=config,
-                                config_file=path, timeout=100000)
-        finally:
-            for patch in patches:
-                patch.stop()
+    def _load(path):
+        client = carla.Client()
+        config = OpenScenarioConfiguration(path, client, {})
+        CarlaDataProvider.set_client(client)
+        ego_vehicles = [CarlaDataProvider.request_new_actor(vehicle.model, vehicle.transform, vehicle.rolename,
+                                                            color=vehicle.color, actor_category=vehicle.category)
+                        for vehicle in config.ego_vehicles]
+        return OpenScenario(world=client.get_world(), ego_vehicles=ego_vehicles, config=config,
+                            config_file=path, timeout=100000)
 
     def _variant(self, source, edit):
         root = ET.parse(source).getroot()
@@ -195,7 +183,7 @@ class TestOpenScenarioRoutingRuntime(unittest.TestCase):
         self.assertEqual([t.location.x for t in route], [20.0])
 
     def test_speed_profile_steps_through_every_entry(self):
-        scenario = self._load(PRIVATE_1_3, schema_gate=False)
+        scenario = self._load(PRIVATE_1_3)
         npc = self._actor(scenario, "npc")
         profile = self._node(scenario, "SpeedProfileAction", parent="InitActornpc")
         controller = _Controller()
@@ -249,9 +237,11 @@ class TestOpenScenarioRoutingRuntime(unittest.TestCase):
             for vertex in polyline.findall("Vertex")[1:]:
                 polyline.remove(vertex)
         with self.assertRaises(ValidationError) as raised:
-            self._load(self._variant(ROUTING, edit), schema_gate=False)
-        self.assertEqual(raised.exception.diagnostics[0].category, "semantic_error")
-        self.assertIn("at least two vertices", raised.exception.diagnostics[0].message)
+            self._load(self._variant(ROUTING, edit))
+        diagnostic = raised.exception.diagnostics[0]
+        self.assertEqual(diagnostic.category, "schema_error")
+        self.assertIn("Polyline", diagnostic.path)
+        self.assertIsNotNone(diagnostic.line)
 
     def test_unsupported_trajectory_shapes_are_backend_diagnostics(self):
         clothoid = ET.fromstring(
@@ -286,11 +276,12 @@ class TestOpenScenarioRoutingRuntime(unittest.TestCase):
                 '<GlobalAction><ParameterAction parameterRef="TimeScale"><ModifyAction/></ParameterAction>'
                 '</GlobalAction>'))
         with self.assertRaises(ValidationError) as raised:
-            self._load(self._variant(ROUTING, edit), schema_gate=False)
-        self.assertIn("requires a Rule", raised.exception.diagnostics[0].message)
+            self._load(self._variant(ROUTING, edit))
+        self.assertEqual(raised.exception.diagnostics[0].category, "schema_error")
+        self.assertIn("Rule", raised.exception.diagnostics[0].message)
 
     def test_speed_profile_actions_build_behaviours(self):
-        scenario = self._load(PRIVATE_1_3, schema_gate=False)
+        scenario = self._load(PRIVATE_1_3)
         init_profile = self._node(scenario, "SpeedProfileAction", parent="InitActornpc")
         self.assertEqual(init_profile.entries, [(5.0, 2.0), (8.0, None)])
         timed, final = init_profile.children
@@ -308,13 +299,13 @@ class TestOpenScenarioRoutingRuntime(unittest.TestCase):
         self.assertEqual((relative._value, relative._value_type), (5.0, "delta"))
 
     def test_trajectory_ref_is_followed(self):
-        scenario = self._load(PRIVATE_1_3, schema_gate=False)
+        scenario = self._load(PRIVATE_1_3)
         atomic = self._node(scenario, "FollowTrajectoryAction", ChangeActorWaypoints, parent="InitActorfollower")
         self.assertEqual(atomic.trajectory.name, "InitTrajectory")
         self.assertEqual(atomic._times, [1.0, 5.0, 9.0])
 
     def test_relative_conditions_build_condition_nodes(self):
-        scenario = self._load(PRIVATE_1_3, schema_gate=False)
+        scenario = self._load(PRIVATE_1_3)
         hero = self._actor(scenario, "hero")
         angle = self._node(scenario, "AngleStart", RelativeAngleToActor)
         self.assertIs(angle._reference_actor, hero)
@@ -340,7 +331,7 @@ class TestOpenScenarioRoutingRuntime(unittest.TestCase):
             clearance = root.find(".//RelativeClearanceCondition")
             clearance.set("freeSpace", "$Free")
             clearance.find("RelativeLaneRange").set("to", "$Lanes")
-        scenario = self._load(self._variant(PRIVATE_1_3, edit), schema_gate=False)
+        scenario = self._load(self._variant(PRIVATE_1_3, edit))
         profile = self._node(scenario, "SpeedProfileAction", parent="InitActornpc")
         self.assertEqual(profile.entries[0], (6.0, 2.0))
         angle = self._node(scenario, "AngleStart", RelativeAngleToActor)
@@ -354,7 +345,7 @@ class TestOpenScenarioRoutingRuntime(unittest.TestCase):
         def edit(root):
             root.find(".//RelativeAngleCondition").set("coordinateSystem", "lane")
         with self.assertRaises(UnsupportedFeatureError) as raised:
-            self._load(self._variant(PRIVATE_1_3, edit), schema_gate=False)
+            self._load(self._variant(PRIVATE_1_3, edit))
         self.assertEqual(raised.exception.diagnostic.category, "backend_capability_error")
 
     def test_unknown_entity_condition_is_reported_not_returned_as_none(self):
