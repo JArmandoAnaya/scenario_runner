@@ -33,8 +33,11 @@ valid documents, so they are refused with a diagnostic instead. Catalog files ar
 their own `FileHeader`; catalogs that still declare a pre-1.0 header (as the shipped example catalogs do) are
 validated against the 1.0 schema, as before. Schema validation is never skipped.
 
-Validation uses the pinned `xmlschema` package, which compiles the 1.3.1 XSD; on the ASAM 1.3.1 example corpus it
-accepts and rejects the same files as libxml2. Compiled schemas are cached per process.
+Validation uses the pinned `xmlschema` package, which compiles the 1.3.1 XSD. Compiled schemas are cached per
+process. On 2026-10-14, validating each `.xosc` file of the ASAM OpenSCENARIO XML 1.3.1 example archive against the
+bundled 1.3.1 XSD with `xmlschema` 1.0.18 and with libxml2 2.10.3 (through `lxml`) gave the same valid or invalid
+verdict for all 28 files (16 scenarios, 3 catalogs and 9 migration snippets). This is a statement about that archive,
+not a general equivalence of the two validators.
 
 A document goes through three independent levels before it runs. Each level reports structured diagnostics
 (category, rule or capability code, message, XPath-like location and source line) and the scenario is not started if
@@ -291,13 +294,15 @@ Summary: 108 features; parsed: 31 typed, 57 legacy, 20 schema only; semantic: 24
 
 The ASAM OpenSCENARIO XML 1.3.1 deliverables ship example scenarios. They are not part of this repository; set
 `OPENSCENARIO_ASAM_EXAMPLES` to an unzipped copy to run the schema part of the corpus test
-(`srunner/tests/test_openscenario_schema.py`). Results for the 20 top-level examples, built with the mocked CARLA
-module:
+(`srunner/tests/test_openscenario_schema.py`). Results for the 16 top-level examples on 2026-10-14, loaded through
+`OpenScenarioConfiguration` and built with the mocked CARLA module:
 
-* Schema: all 20 are valid. (The 8 files under `Migration/Version_1.3/Examples` are partial migration snippets and
-  are invalid for both `xmlschema` and libxml2.)
-* Checker: `TrailerConnect.xosc` is rejected because its `Catalogs/Controllers` catalog directory is not part of
-  the example archive (`reference_control.catalogs_referenced_by_directory`). The other 19 pass.
+* Schema: all 16 are valid. (Of the 9 files under `Migration/Version_1.3/Examples`, 8 are partial migration snippets
+  that are invalid against the 1.3.1 schema; `Example_Catalog_withName.xosc` is schema valid but declares 1.2 and is
+  refused for its version.)
+* Semantics and checker: `TrailerConnect.xosc` is rejected because its `Catalogs/Controllers` catalog directory is
+  not part of the example archive (`reference_control.catalogs_referenced_by_directory`). The other 15 pass; their
+  `$owner` entity references resolve in the scope of the referencing story.
 * Build: 5 build (`SequentialEvents_0-100-0kph_Explicit`, `SequentialEvents_0-100-0kph_Implicit`,
   `DoubleLaneChanger`, `FastOvertakeWithReInitialization`, `Overtaker`). 6 are rejected with unsupported-feature
   diagnostics: `CloseVehicleCrossing` (`TrajectoryPosition`, `initialDistanceOffset`), `EndOfTrafficJam`
@@ -364,7 +369,7 @@ contains of submodules, which are not listed, the support status applies to all 
 | GlobalAction                          | Init  support                            | Story support                              | Notes                              |
 | ---------------------------------------- | ---------------------------------------- | ---------------------------------------- | ---------------------------------------- |
 | `EntityAction`                | &#9989;                          | &#9989;                          |                               |
-| `EnvironmentAction`           | &#9989;                         | &#10060;                          |                               |
+| `EnvironmentAction`           | &#9989;                         | &#9989;                           |                               |
 | `ParameterAction`             | &#9989;                          | &#9989;                          | Values may be literals, `$name` references or `${...}` expressions (see [Parameters, variables and expressions](#parameters-variables-and-expressions)). The parameter must be declared. |
 | `VariableAction`              | &#9989;                          | &#9989;                          | `SetAction` and `ModifyAction` (`AddValue`, `MultiplyByValue`). See [Parameters, variables and expressions](#parameters-variables-and-expressions). |
 | `InfrastructureAction` `TrafficSignalAction`<br>`TrafficAction`                                               | &#10060;                          | &#10060;                          |                               |
@@ -394,11 +399,11 @@ contains of submodules, which are not listed, the support status applies to all 
 | `ActivateControllerAction`                          | &#10060;             | &#9989;            | Can be used to activate/deactive the CARLA autopilot.                                             |
 | `ControllerAction`                                  | &#9989;            | &#9989;            | AssignControllerAction is supported, but a Python module has to be provided for the controller implementation, and in OverrideControllerValueAction all values need to be `False`. |
 | `LateralAction`<br> `LaneChangeAction`             | &#10060;             | &#9989;            | Currently all lane changes have a linear dynamicShape, the dynamicDimension is defined as the distance and are relative to the actor itself (RelativeTargetLane).                  |
-| `LateralAction`<br>`LaneOffsetAction`             | &#10060;             | &#9989;             |  Currently all type of dynamicShapes are ignored and depend on the controller. This action might not work as intended if the offset is high enough to make the vehicle exit its lane  |
+| `LateralAction`<br>`LaneOffsetAction`             | &#9989;              | &#9989;             |  Currently all type of dynamicShapes are ignored and depend on the controller. This action might not work as intended if the offset is high enough to make the vehicle exit its lane  |
 | `LateralAction`<br> `LateralDistanceAction`        | &#9989;             | &#9989;             |                  |
 | `LongitudinalAction`<br> `LongitudinalDistanceAction`| &#10060;             | &#9989;              |`timeGap` attribute is not supported              |
 | `LongitudinalAction`<br> `SpeedAction`             | &#9989;            | &#9989;            |                  |
-| `SynchronizeAction`                                 | &#10060;             | &#10060;             |                  |
+| `SynchronizeAction`                                 | &#10060;             | &#9989;              |                  |
 | `TeleportAction`                                    | &#9989;            | &#9989;            |                  |
 | `VisibilityAction`                                  | &#10060;             | &#10060;             |                  |
 | `RoutingAction`<br> `AcquirePositionAction`        | &#9989;             | &#9989;            | The target position is reached with the `fastest` route option. See [Routes, trajectories and speed profiles](#routes-trajectories-and-speed-profiles). |
