@@ -194,6 +194,32 @@ class TestOpenScenario131Conformance(unittest.TestCase):
         self.assertEqual(diagnostic.code, "capability:action/LightStateAction")
         self.assertIn("Event[@name='Accelerate']", diagnostic.path)
 
+    def test_road_network_without_logic_file_uses_the_loaded_map(self):
+        path = os.path.join(TESTS_DIR, "fixtures", "openscenario", "private_actions_1_3.xosc")
+        with open(path, encoding="utf-8") as handle:
+            source = handle.read()
+        self.assertIn('<LogicFile filepath="Town01"/>', source)
+        variant = os.path.join(self.directory, "no_logic_file.xosc")
+        with open(variant, "w", encoding="utf-8") as handle:
+            handle.write(source.replace('<LogicFile filepath="Town01"/>', ''))
+        scenario = self._load(variant)
+        self.assertEqual(scenario.config.town, carla.Client().get_world().get_map().name)
+
+    def test_act_without_start_trigger_starts_immediately(self):
+        with open(FIXTURE, encoding="utf-8") as handle:
+            source = handle.read()
+        start = source.index("<StartTrigger>", source.index('<Act name="Main">'))
+        while True:
+            # The Act StartTrigger is the last StartTrigger before </Act>.
+            following = source.find("<StartTrigger>", start + 1)
+            if following == -1 or following > source.index("</Act>"):
+                break
+            start = following
+        end = source.index("</StartTrigger>", start) + len("</StartTrigger>")
+        scenario = self._load(self._variant(source[start:end], ''))
+        act = self._node(scenario, "Act StartConditions and behaviours")
+        self.assertEqual([child.name for child in act.children], ["Maneuver + EndConditions Group"])
+
     def test_unsupported_versions_are_rejected(self):
         with self.assertRaises(ValidationError) as raised:
             self._load(self._variant('revMinor="3"', 'revMinor="2"'))

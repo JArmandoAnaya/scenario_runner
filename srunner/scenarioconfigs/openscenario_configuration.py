@@ -26,7 +26,7 @@ from srunner.openscenario.compatibility.global_parameters import GlobalParameter
 from srunner.openscenario.execution.context import ExecutionContext
 from srunner.openscenario.execution.feature_audit import audit_document, raise_for_unsupported
 from srunner.openscenario.parsing.loader import load_document
-from srunner.openscenario.validation.diagnostics import diagnostics_as_validation_error
+from srunner.openscenario.validation.diagnostics import Diagnostic, ValidationError, diagnostics_as_validation_error
 from srunner.openscenario.validation.checker import SCHEMA_RULE, Checker
 from srunner.openscenario.validation.schema import SchemaValidator
 
@@ -188,7 +188,8 @@ class OpenScenarioConfiguration(ScenarioConfiguration):
         Note: The specification allows multiple Logics elements within the RoadNetwork element.
               Hence, there can be multiple towns specified. We just use the _last_ one.
         """
-        for logic in self.xml_tree.find("RoadNetwork").findall("LogicFile"):
+        road_network = self.xml_tree.find("RoadNetwork")
+        for logic in (road_network.findall("LogicFile") if road_network is not None else []):
             self.town = self._attribute(logic, 'filepath')
 
         if self.town is not None and ".xodr" in self.town:
@@ -203,6 +204,14 @@ class OpenScenarioConfiguration(ScenarioConfiguration):
         if world:
             world.get_settings()
             wmap = world.get_map()
+
+        if self.town is None:
+            # The LogicFile is optional since OpenSCENARIO 1.1: run on the map the server has loaded.
+            if wmap is None:
+                raise ValidationError([Diagnostic(
+                    "semantic_error", "The RoadNetwork has no LogicFile and the CARLA server has no map loaded")])
+            self.town = wmap.name.split('/')[-1]
+            self.logger.info(" The RoadNetwork has no LogicFile; using the loaded map %s", self.town)
 
         if world is None or (wmap is not None and wmap.name.split('/')[-1] != self.town):
             if ".xodr" in self.town:
