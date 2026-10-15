@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Empty choice elements, for every document version.
+"""Empty choice elements and unresolved entity references, for every document version.
 
 The SemanticValidator tests need no CARLA; the configuration tests need the
 CARLA mocks (``srunner/tests/carla_mocks`` first on PYTHONPATH) and are
@@ -118,6 +118,80 @@ class TestEmptyChoices(_Documents):
         self.assertEqual(self._empty(root), [])
 
 
+class TestEntityReferences(_Documents):
+
+    def _unknown(self, root):
+        return [item for item in self._diagnostics(root, Diagnostic.UNKNOWN_REFERENCE)
+                if "ScenarioObject or EntitySelection" in item.message]
+
+    def test_every_usage_is_checked(self):
+        cases = (
+            ("Storyboard/Init/Actions/Private", "entityRef"),
+            (".//ManeuverGroup/Actors/EntityRef", "entityRef"),
+            (".//TriggeringEntities/EntityRef", "entityRef"),
+            (".//RelativeDistanceCondition", "entityRef"),
+            (".//RelativeRoadPosition", "entityRef"),
+        )
+        for path, attribute in cases:
+            with self.subTest(path=path):
+                root = ET.parse(EXAMPLE_1_0).getroot()
+                element = root.find(path)
+                self.assertIsNotNone(element, path)
+                element.set(attribute, "ghost")
+                diagnostics = self._unknown(root)
+                self.assertEqual([(item.source.tag, item.source.attrib[attribute]) for item in diagnostics],
+                                 [(element.tag, "ghost")])
+
+    def test_master_entity_and_trailer_references(self):
+        root = ET.parse(FIXTURE_1_3).getroot()
+        actions = root.find(".//Event/Action/PrivateAction/..")
+        synchronize = ET.fromstring(
+            '<PrivateAction><SynchronizeAction masterEntityRef="ghost">'
+            '<TargetPositionMaster><WorldPosition x="0" y="0"/></TargetPositionMaster>'
+            '<TargetPosition><WorldPosition x="1" y="0"/></TargetPosition></SynchronizeAction></PrivateAction>')
+        trailer = ET.fromstring('<PrivateAction><ConnectTrailerAction trailerRef="trailer"/></PrivateAction>')
+        actions.extend([synchronize, trailer])
+        self.assertEqual(sorted(item.source.tag for item in self._unknown(root)),
+                         ["ConnectTrailerAction", "SynchronizeAction"])
+
+    def test_parameter_and_prefixed_references_resolve(self):
+        root = ET.parse(EXAMPLE_1_0).getroot()
+        ET.SubElement(root.find("ParameterDeclarations"), "ParameterDeclaration",
+                      name="Owner", parameterType="string", value="hero")
+        root.find("Storyboard/Init/Actions/Private").set("entityRef", "$Owner")
+        root.find(".//ManeuverGroup/Actors/EntityRef").set("entityRef", "Entities::adversary")
+        self.assertEqual(self._unknown(root), [])
+
+    def test_parameters_resolve_in_the_scope_of_the_reference(self):
+        root = ET.parse(EXAMPLE_1_0).getroot()
+        ET.SubElement(root.find("ParameterDeclarations"), "ParameterDeclaration",
+                      name="Owner", parameterType="string", value="ghost")
+        story = root.find("Storyboard/Story")
+        story.insert(0, ET.fromstring('<ParameterDeclarations><ParameterDeclaration name="Owner" '
+                                      'parameterType="string" value="adversary"/></ParameterDeclarations>'))
+        story.find(".//Actors/EntityRef").set("entityRef", "$Owner")
+        self.assertEqual(self._unknown(root), [])
+        root.find("Storyboard/Init/Actions/Private").set("entityRef", "$Owner")
+        self.assertEqual([item.source.tag for item in self._unknown(root)], ["Private"])
+
+    def test_parameter_override_is_used(self):
+        root = ET.parse(EXAMPLE_1_0).getroot()
+        ET.SubElement(root.find("ParameterDeclarations"), "ParameterDeclaration",
+                      name="Owner", parameterType="string", value="ghost")
+        root.find("Storyboard/Init/Actions/Private").set("entityRef", "$Owner")
+        document = load_document(self._write(root))
+        validator = SemanticValidator(parameter_overrides={"Owner": "hero"})
+        self.assertEqual([item for item in validator.validate(document, raise_on_error=False)
+                          if item.code == Diagnostic.UNKNOWN_REFERENCE], [])
+
+    def test_parameter_naming_no_entity(self):
+        root = ET.parse(EXAMPLE_1_0).getroot()
+        ET.SubElement(root.find("ParameterDeclarations"), "ParameterDeclaration",
+                      name="Owner", parameterType="string", value="ghost")
+        root.find("Storyboard/Init/Actions/Private").set("entityRef", "$Owner")
+        self.assertIn("'ghost'", self._unknown(root)[0].message)
+
+
 @unittest.skipUnless(MOCKED_CARLA, "requires srunner/tests/carla_mocks first on PYTHONPATH")
 class TestConfigurationRejectsStructuralErrors(_Documents):
 
@@ -155,6 +229,14 @@ class TestConfigurationRejectsStructuralErrors(_Documents):
         with self.assertRaises(ValidationError) as raised:
             self._load(root)
         self.assertEqual([item.code for item in raised.exception.diagnostics], [Diagnostic.EMPTY_CHOICE])
+
+    def test_unknown_entity_in_a_1_0_document(self):
+        root = ET.parse(EXAMPLE_1_0).getroot()
+        root.find("Storyboard/Init/Actions/Private").set("entityRef", "ghost")
+        with self.assertRaises(ValidationError) as raised:
+            self._load(root)
+        self.assertEqual([item.code for item in raised.exception.diagnostics], [Diagnostic.UNKNOWN_REFERENCE])
+        self.assertIsNotNone(raised.exception.diagnostics[0].line)
 
 
 if __name__ == "__main__":

@@ -74,7 +74,7 @@ class ExecutionContext(object):
         if parameter_binding is not None:
             parameters.bind(parameter_binding)
 
-        validation = (validator or SemanticValidator()).validate(document, raise_on_error=False)
+        validation = (validator or SemanticValidator(parameter_overrides)).validate(document, raise_on_error=False)
         # The validator also reports unknown references in declaration values; keep one diagnostic each.
         reported = set(id(item.source) for item in validation if item.code == Diagnostic.UNKNOWN_REFERENCE)
         diagnostics = [item for item in diagnostics

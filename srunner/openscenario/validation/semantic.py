@@ -11,7 +11,14 @@ from srunner.openscenario.validation.schema_model import schema_model
 
 
 class SemanticValidator(object):
-    """Validate invariants that are not expressed by the XML schema."""
+    """Validate invariants that are not expressed by the XML schema.
+
+    ``parameter_overrides`` are the user-supplied values of global parameters (for example
+    ``--openscenarioparams``), used where a check resolves a parameter reference.
+    """
+
+    def __init__(self, parameter_overrides=None):
+        self.parameter_overrides = dict(parameter_overrides or {})
 
     def validate(self, document, raise_on_error=True):
         diagnostics = []
@@ -33,6 +40,7 @@ class SemanticValidator(object):
 
         if getattr(document, "root", None) is not None and getattr(document, "version", None) is not None:
             diagnostics.extend(empty_choice_diagnostics(document))
+            diagnostics.extend(entity_reference_diagnostics(document, self.parameter_overrides))
 
         if diagnostics and raise_on_error:
             raise ValidationError(diagnostics)
@@ -166,6 +174,9 @@ def _check_value(value, parameters, variables, source):
     return diagnostics
 
 
+ENTITY_REFERENCE_ATTRIBUTES = ("entityRef", "masterEntityRef", "trailerRef")
+
+
 def empty_choice_diagnostics(document, schema=None):
     """Report elements that contain none of the alternatives of a choice in their content model.
 
@@ -182,3 +193,33 @@ def empty_choice_diagnostics(document, schema=None):
                        source=element, code=Diagnostic.EMPTY_CHOICE)
             for element, members in model.empty_choices(document.root, schema_model("1.3.1"))]
 
+
+def entity_reference_diagnostics(document, parameter_overrides=None):
+    """Report entity references (entityRef, masterEntityRef, trailerRef) that name no declared entity.
+
+    Entities are the ScenarioObject and EntitySelection elements of the document's Entities; a
+    reference may carry name prefixes ("Entities::hero"). Parameter references are resolved in the
+    scope of the referencing element. References whose value cannot be resolved (an undeclared
+    parameter, for example) are reported by the parameter checks instead.
+    """
+    # Deferred: the checker package imports the model, which imports this package.
+    from srunner.openscenario.validation.checker.context import CheckerContext  # pylint: disable=import-outside-toplevel
+    context = CheckerContext(document, parameter_overrides=parameter_overrides)
+    entities = document.root.find("Entities")
+    names = set(element.attrib.get("name") for element in (entities if entities is not None else ())
+                if element.tag in ("ScenarioObject", "EntitySelection"))
+    diagnostics = []
+    for element in document.root.iter():
+        for attribute in ENTITY_REFERENCE_ATTRIBUTES:
+            value = element.attrib.get(attribute)
+            if value is None:
+                continue
+            if "$" in value:
+                value = context.text(element, attribute)
+                if value is None:
+                    continue
+            if value.split("::")[-1] not in names:
+                diagnostics.append(Diagnostic(
+                    "semantic_error", "{} {}={!r} does not name a ScenarioObject or EntitySelection".format(
+                        element.tag, attribute, value), source=element, code=Diagnostic.UNKNOWN_REFERENCE))
+    return diagnostics
