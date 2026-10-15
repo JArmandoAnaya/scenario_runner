@@ -117,9 +117,9 @@ class SchemaModel(object):
         """Map child element name -> type name for the content model of complex type ``type_name``."""
         if type_name not in self._child_types:
             node = self.complex_types.get(type_name)
+            particles = self._particles(node) if node is not None else ()
             self._child_types[type_name] = dict(
-                (item.attrib["name"], item.attrib["type"]) for item in (self._particles(node) if node is not None
-                                                                         else ()) if "type" in item.attrib)
+                (item.attrib["name"], item.attrib["type"]) for item in particles if "type" in item.attrib)
         return self._child_types[type_name]
 
     def _choice_nodes(self, owner, node, optional=False):

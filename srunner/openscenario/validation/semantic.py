@@ -30,7 +30,7 @@ class SemanticValidator(object):
         for reference in getattr(document, "catalog_references", []):
             if not reference.catalog_name or not reference.entry_name:
                 diagnostics.append(Diagnostic("semantic_error", "CatalogReference requires catalogName and entryName",
-                                               source=reference.source))
+                                              source=reference.source))
 
         if hasattr(document, "positions"):
             diagnostics.extend(self._structures(document))

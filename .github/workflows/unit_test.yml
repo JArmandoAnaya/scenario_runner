@@ -22,7 +22,13 @@ jobs:
         sudo pip3 install pylint --upgrade
         sudo pip3 install -r requirements.txt
 
-    - name: Check Code Format
+    - name: Run Unit Tests
+      # One process per module: several suites replace modules in sys.modules.
       run: |
         export PYTHONPATH=$PYTHONPATH:`pwd`:`pwd`/srunner/tests/carla_mocks
         python3 -m unittest srunner/tests/test_xosc_load.py
+        for test in srunner/tests/test_openscenario_*.py; do
+          python3 -m unittest "$test"
+        done
+        python3 -m unittest tests/test_carla_compat.py
+        python3 -m unittest tests/test_recorder_chaos.py
