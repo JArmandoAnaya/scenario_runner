@@ -20,6 +20,7 @@ class Diagnostic(object):
     NOT_MIGRATED = "not_migrated"
     UNSUPPORTED_VERSION = "unsupported_version"
     SCHEMA_VIOLATION = "schema_violation"
+    EMPTY_CHOICE = "empty_choice"
 
     def __init__(self, category, message, path=None, severity="error", source=None, code=None, rule=None,
                  line=None):

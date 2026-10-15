@@ -6,6 +6,8 @@ from srunner.openscenario.validation.diagnostics import Diagnostic, ValidationEr
 # Module import (not names): the expression module imports this package's diagnostics.
 from srunner.openscenario.model import expressions
 from srunner.openscenario.model.references import Position, Route, Trajectory
+from srunner.openscenario.validation.schema import schema_key
+from srunner.openscenario.validation.schema_model import schema_model
 
 
 class SemanticValidator(object):
@@ -28,6 +30,9 @@ class SemanticValidator(object):
 
         if hasattr(document, "variable_actions"):
             diagnostics.extend(self._references(document))
+
+        if getattr(document, "root", None) is not None and getattr(document, "version", None) is not None:
+            diagnostics.extend(empty_choice_diagnostics(document))
 
         if diagnostics and raise_on_error:
             raise ValidationError(diagnostics)
@@ -159,3 +164,21 @@ def _check_value(value, parameters, variables, source):
             message += "; variables can only be read by a VariableCondition"
         diagnostics.append(Diagnostic("semantic_error", message, source=source, code=Diagnostic.UNKNOWN_REFERENCE))
     return diagnostics
+
+
+def empty_choice_diagnostics(document, schema=None):
+    """Report elements that contain none of the alternatives of a choice in their content model.
+
+    The OpenSCENARIO 1.0 XSD declares every choice member with minOccurs="0", so it accepts for example
+    an empty Action, PrivateAction or ByValueCondition although the standard requires one alternative.
+    Which choices are required is taken from the 1.3.1 schema, for documents of every version.
+    ``schema`` forces the schema key used to walk the document.
+    """
+    try:
+        model = schema_model(schema or schema_key(document.version))
+    except ValidationError:
+        return []
+    return [Diagnostic("semantic_error", "{} requires one of {}".format(element.tag, ", ".join(members)),
+                       source=element, code=Diagnostic.EMPTY_CHOICE)
+            for element, members in model.empty_choices(document.root, schema_model("1.3.1"))]
+

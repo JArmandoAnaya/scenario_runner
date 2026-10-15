@@ -44,7 +44,12 @@ any level reports an error:
 2. **Semantics** (`semantic_error`, `checker_rule`): the typed model and its validation (parameters, variables,
    expressions, routes, trajectories), plus the static checker rules of ASAM OpenSCENARIO XML 1.3.1 Annex C
    (`srunner/openscenario/validation/checker/`). Errors abort with a `ValidationError` listing all diagnostics;
-   warnings are logged.
+   warnings are logged. A structural check applies to documents of every version:
+    * An element whose content is a choice (for example `Action`, `PrivateAction`, `GlobalAction`, `Condition`,
+      `ByValueCondition`, `EntityCondition`, `Position`, `Shape` or the entity of a `ScenarioObject`) must contain
+      one of the alternatives (code `empty_choice`). The 1.0 XSD declares every alternative optional and accepts
+      such empty elements; the choices that may be empty are taken from the 1.3.1 XSD. Catalog files are checked
+      as well.
 3. **Runtime capability** (`unsupported_feature`, `backend_capability_error`, `approximation_warning`): every element
    of the scenario and of the catalog entries it references is looked up in the capability matrix below. Elements the
    ScenarioRunner backend cannot execute in the context they are used in (Init or story), and known unsupported

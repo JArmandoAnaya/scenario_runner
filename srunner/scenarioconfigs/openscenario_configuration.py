@@ -29,6 +29,7 @@ from srunner.openscenario.parsing.loader import load_document
 from srunner.openscenario.validation.diagnostics import Diagnostic, ValidationError, diagnostics_as_validation_error
 from srunner.openscenario.validation.checker import SCHEMA_RULE, Checker
 from srunner.openscenario.validation.schema import SchemaValidator
+from srunner.openscenario.validation.semantic import empty_choice_diagnostics
 
 
 class OpenScenarioConfiguration(ScenarioConfiguration):
@@ -107,6 +108,9 @@ class OpenScenarioConfiguration(ScenarioConfiguration):
             self.logger.warning(" Catalog %s declares OpenSCENARIO %s; validating it against the 1.0 schema",
                                 catalog_path, document.version)
         SchemaValidator().validate(document, schema=schema)
+        diagnostics = empty_choice_diagnostics(document, schema)
+        if diagnostics:
+            raise ValidationError([diagnostic.locate(document) for diagnostic in diagnostics])
         return document
 
     def _parse_openscenario_configuration(self):

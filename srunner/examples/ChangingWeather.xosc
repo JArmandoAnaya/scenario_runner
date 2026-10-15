@@ -107,7 +107,21 @@
           </Maneuver>
           <Maneuver name="DummyManeuver">
             <Event name="DummyManeuver" priority="overwrite">
-              <Action name="DummyManeuver"/>
+              <Action name="DummyManeuver">
+                <GlobalAction>
+                  <EnvironmentAction>
+                    <Environment name="Environment1">
+                      <TimeOfDay animation="true" dateTime="2020-01-01T22:00:00"/>
+                      <Weather cloudState="free">
+                        <Sun intensity="0.05" azimuth="0" elevation="1.31"/>
+                        <Fog visualRange="100000.0"/>
+                        <Precipitation precipitationType="rain" intensity="0.9"/>
+                      </Weather>
+                      <RoadCondition frictionScaleFactor="1.0"/>
+                    </Environment>
+                  </EnvironmentAction>
+                </GlobalAction>
+              </Action>
               <StartTrigger>
                 <ConditionGroup>
                   <Condition name="DummyManeuverStartTime" delay="0" conditionEdge="rising">

@@ -50,7 +50,10 @@ class SchemaModel(object):
         for node in root.iter(XSD + "element"):
             if "name" in node.attrib and "type" in node.attrib:
                 self.element_types.setdefault(node.attrib["name"], set()).add(node.attrib["type"])
+        self.root_types = dict((node.attrib["name"], node.attrib.get("type")) for node in root.findall(XSD + "element"))
         self._attribute_types = {}
+        self._child_types = {}
+        self._choices = {}
 
     def attribute_types(self, tag):
         """Map attribute name -> value type ('double', 'int', 'boolean', 'string', ...) for element ``tag``."""
@@ -109,6 +112,80 @@ class SchemaModel(object):
             elif name not in result:
                 result.append(name)
         return result
+
+    def child_types(self, type_name):
+        """Map child element name -> type name for the content model of complex type ``type_name``."""
+        if type_name not in self._child_types:
+            node = self.complex_types.get(type_name)
+            self._child_types[type_name] = dict(
+                (item.attrib["name"], item.attrib["type"]) for item in (self._particles(node) if node is not None
+                                                                         else ()) if "type" in item.attrib)
+        return self._child_types[type_name]
+
+    def _choice_nodes(self, owner, node, optional=False):
+        """Yield ``(owner, choice, optional)`` for every xsd:choice of a model group, following group references.
+
+        ``optional`` is True when an enclosing particle (group reference, sequence or choice) or the choice
+        itself has minOccurs="0".
+        """
+        for child in node:
+            if child.tag not in (XSD + "group", XSD + "choice", XSD + "sequence", XSD + "all"):
+                continue
+            child_optional = optional or child.attrib.get("minOccurs") == "0"
+            if child.tag == XSD + "choice":
+                yield owner, child, child_optional
+            if child.tag == XSD + "group" and "ref" in child.attrib:
+                yield from self._choice_nodes(child.attrib["ref"], self.groups[child.attrib["ref"]], child_optional)
+            elif child.tag != XSD + "group":
+                yield from self._choice_nodes(owner, child, child_optional)
+
+    def choices(self, type_name):
+        """``[(owner, members, choice_optional, members_optional)]`` for the element choices of ``type_name``.
+
+        ``owner`` is the complex type or group declaring the choice; ``choice_optional`` is True when the
+        choice or an enclosing particle has minOccurs="0" and ``members_optional`` when every member has
+        minOccurs="0".
+        """
+        if type_name not in self._choices:
+            node = self.complex_types.get(type_name)
+            result = []
+            for owner, choice, optional in (self._choice_nodes(type_name, node) if node is not None else ()):
+                members = list(choice)
+                if not members or any(item.tag != XSD + "element" for item in members):
+                    continue
+                result.append((owner, tuple(item.attrib["name"] for item in members), optional,
+                               all(item.attrib.get("minOccurs") == "0" for item in members)))
+            self._choices[type_name] = result
+        return self._choices[type_name]
+
+    def optional_choice_owners(self):
+        """Types and groups whose element choice may be empty according to this schema."""
+        owners = set()
+        for type_name in self.complex_types:
+            owners.update(owner for owner, _, choice_optional, members_optional in self.choices(type_name)
+                          if choice_optional or members_optional)
+        return owners
+
+    def empty_choices(self, root, reference=None):
+        """Yield ``(element, members)`` for each element below ``root`` that has none of a choice's members.
+
+        The 1.0 XSD marks every choice member minOccurs="0" although the standard requires one of them, so
+        whether a choice may be empty is taken from ``reference`` (a SchemaModel, by default this one): a
+        choice is required unless it has minOccurs="0" here or its owner's choice may be empty in
+        ``reference``.
+        """
+        optional_owners = (reference or self).optional_choice_owners()
+        stack = [(root, self.root_types.get(root.tag))]
+        while stack:
+            element, type_name = stack.pop()
+            if type_name is None:
+                continue
+            tags = set(child.tag for child in element)
+            for owner, members, choice_optional, _ in self.choices(type_name):
+                if not choice_optional and owner not in optional_owners and not tags.intersection(members):
+                    yield element, members
+            child_types = self.child_types(type_name)
+            stack.extend((child, child_types.get(child.tag)) for child in reversed(list(element)))
 
     def features(self):
         """OrderedDict category -> sorted element names, extracted from the schema."""
