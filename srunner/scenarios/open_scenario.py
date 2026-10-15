@@ -13,6 +13,8 @@ from __future__ import print_function
 
 import itertools
 import os
+import xml.etree.ElementTree as ET
+
 import py_trees
 
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
@@ -536,8 +538,9 @@ class OpenScenario(BasicScenario):
                         parallel_sequences, "ACT", act.attrib.get('name'))
                     parallel_behavior.add_child(parallel_sequences)
 
+                # The Act StartTrigger is optional since OpenSCENARIO 1.1; without one the Act starts at once.
                 start_triggers = act.find("StartTrigger")
-                if list(start_triggers) is not None:
+                if start_triggers is not None:
                     for start_condition in start_triggers:
                         parallel_start_criteria = self._create_condition_container(start_condition,
                                                                                    story,
@@ -582,7 +585,34 @@ class OpenScenario(BasicScenario):
 
         behavior.add_child(stories_behavior)
 
-        return behavior
+        stop_trigger = self._create_storyboard_stop_trigger()
+        if stop_trigger is None:
+            return behavior
+        storyboard = py_trees.composites.Parallel(policy=py_trees.common.ParallelPolicy.SUCCESS_ON_ONE,
+                                                  name="Storyboard")
+        storyboard.add_children([behavior, stop_trigger])
+        return storyboard
+
+    def _create_storyboard_stop_trigger(self):
+        """
+        Build the Storyboard StopTrigger, which ends the scenario when it fires.
+
+        Conditions named criteria_<Name> are ScenarioRunner evaluation criteria (see
+        _create_test_criteria) and are left out; condition groups made only of them are skipped.
+        """
+        stop_trigger = self.config.storyboard.find("StopTrigger")
+        if stop_trigger is None:
+            return None
+        container = ET.Element("Storyboard", name="Storyboard")
+        trigger = ET.SubElement(container, "StopTrigger", name="StopTrigger")
+        for group in stop_trigger.findall("ConditionGroup"):
+            conditions = [condition for condition in group.findall("Condition")
+                          if not condition.attrib.get('name', '').startswith('criteria_')]
+            if conditions:
+                ET.SubElement(trigger, "ConditionGroup").extend(conditions)
+        if not list(trigger):
+            return None
+        return self._create_condition_container(trigger, container, "StoryboardStopTrigger")
 
     def _create_weather_behavior(self):
         """
