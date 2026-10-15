@@ -49,7 +49,7 @@ import carla
 
 from srunner.scenarioconfigs.openscenario_configuration import OpenScenarioConfiguration
 from srunner.openscenario.execution.registry import UnsupportedFeatureError
-from srunner.openscenario.validation.diagnostics import ValidationError
+from srunner.openscenario.validation.diagnostics import DiagnosticError
 from srunner.scenariomanager.carla_data_provider import CarlaDataProvider
 from srunner.scenariomanager.scenario_manager import ScenarioManager
 from srunner.scenarios.open_scenario import OpenScenario
@@ -62,6 +62,17 @@ from srunner.scenarioconfigs.osc2_scenario_configuration import OSC2ScenarioConf
 
 # Minimum version of CARLA that is required
 MIN_CARLA_VERSION = '0.9.14'
+
+
+# Errors whose diagnostics describe a rejected OpenSCENARIO document; reported without a traceback.
+OPENSCENARIO_ERRORS = (DiagnosticError, UnsupportedFeatureError)
+
+
+def report_rejected_openscenario(filename, error):
+    """Print the diagnostics of an OpenSCENARIO file that was rejected."""
+    print("The OpenSCENARIO file {} was rejected:".format(filename))
+    for diagnostic in getattr(error, "diagnostics", None) or [error]:
+        print("  {}".format(diagnostic))
 
 
 class ScenarioRunner(object):
@@ -430,9 +441,12 @@ class ScenarioRunner(object):
                                           randomize=self._args.randomize,
                                           debug_mode=self._args.debug)
         except Exception as exception:                  # pylint: disable=broad-except
-            print("The scenario cannot be loaded")
-            traceback.print_exc()
-            print(exception)
+            if self._args.openscenario and isinstance(exception, OPENSCENARIO_ERRORS):
+                report_rejected_openscenario(self._args.openscenario, exception)
+            else:
+                print("The scenario cannot be loaded")
+                traceback.print_exc()
+                print(exception)
             self._cleanup()
             return False
 
@@ -522,10 +536,8 @@ class ScenarioRunner(object):
                 openscenario_params[key] = val
         try:
             config = OpenScenarioConfiguration(self._args.openscenario, self.client, openscenario_params)
-        except (ValidationError, UnsupportedFeatureError) as error:
-            print("The OpenSCENARIO file {} was rejected:".format(self._args.openscenario))
-            for diagnostic in error.diagnostics:
-                print("  {}".format(diagnostic))
+        except OPENSCENARIO_ERRORS as error:
+            report_rejected_openscenario(self._args.openscenario, error)
             self._cleanup()
             return False
 
@@ -672,7 +684,7 @@ def main():
         arguments.sync = True
 
     scenario_runner = None
-    result = True
+    result = False
     try:
         scenario_runner = ScenarioRunner(arguments)
         result = scenario_runner.run()

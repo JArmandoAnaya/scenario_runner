@@ -247,6 +247,7 @@ class OpenScenario(BasicScenario):
                                                    terminate_on_failure=False, criteria_enable=criteria_enable)
         except Exception:
             OpenScenarioParser.set_execution_context(None)
+            self.remove_all_actors()
             raise
 
     def _initialize_parameters(self):
