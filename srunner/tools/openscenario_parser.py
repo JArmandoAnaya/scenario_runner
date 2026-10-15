@@ -16,6 +16,7 @@ import copy
 import datetime
 import math
 import operator
+import xml.etree.ElementTree as ET
 
 import py_trees
 import carla
@@ -506,7 +507,7 @@ class OpenScenarioParser(object):
         else:
             return 1.0
 
-        if sum(1 for _ in set_environment.iter("Weather")) != 0:
+        if set_environment.find("Environment") is not None:
             environment = set_environment.find("Environment")
         elif set_environment.find("CatalogReference") is not None:
             catalog_reference = set_environment.find("CatalogReference")
@@ -540,20 +541,25 @@ class OpenScenarioParser(object):
         else:
             return Weather(carla.WeatherParameters())
 
-        if sum(1 for _ in set_environment.iter("Weather")) != 0:
+        if set_environment.find("Environment") is not None:
             environment = set_environment.find("Environment")
         elif set_environment.find("CatalogReference") is not None:
             catalog_reference = set_environment.find("CatalogReference")
             environment = OpenScenarioParser.get_catalog_entry(catalogs, catalog_reference)
 
+        # Sun, Fog, Precipitation and TimeOfDay are mandatory in OpenSCENARIO 1.0 but optional in 1.3.
+        empty = ET.Element("Empty")
         weather = environment.find("Weather")
+        weather = weather if weather is not None else empty
         sun = weather.find("Sun")
+        sun = sun if sun is not None else empty
 
         carla_weather = carla.WeatherParameters()
         carla_weather.sun_azimuth_angle = math.degrees(osc_attribute(sun, 'azimuth', 'double', 0))
         carla_weather.sun_altitude_angle = math.degrees(osc_attribute(sun, 'elevation', 'double', 0))
         carla_weather.cloudiness = 100 - osc_attribute(sun, 'intensity', 'double', 0) * 100
         fog = weather.find("Fog")
+        fog = fog if fog is not None else empty
         carla_weather.fog_distance = osc_attribute(fog, 'visualRange', 'double', 'inf')
         if carla_weather.fog_distance < 1000:
             carla_weather.fog_density = 100
@@ -562,15 +568,18 @@ class OpenScenarioParser(object):
         carla_weather.wetness = 0
         carla_weather.wind_intensity = 30.0
         precepitation = weather.find("Precipitation")
+        precepitation = precepitation if precepitation is not None else empty
         precipitation_type = osc_attribute(precepitation, 'precipitationType', 'string')
         if precipitation_type == "rain":
-            carla_weather.precipitation = osc_attribute(precepitation, 'intensity', 'double') * 100
+            carla_weather.precipitation = osc_attribute(precepitation, 'intensity', 'double', 0) * 100
             carla_weather.precipitation_deposits = 100  # if it rains, make the road wet
             carla_weather.wetness = carla_weather.precipitation
-        elif osc_attribute(precepitation, 'type', 'string') == "snow":
+        elif precipitation_type == "snow":
             raise AttributeError("CARLA does not support snow precipitation")
 
         time_of_day = environment.find("TimeOfDay")
+        if time_of_day is None:
+            return Weather(carla_weather)
         weather_animation = osc_attribute(time_of_day, "animation", "boolean")
         time = osc_attribute(time_of_day, "dateTime", "string")
         dtime = datetime.datetime.strptime(time, "%Y-%m-%dT%H:%M:%S")
@@ -610,7 +619,7 @@ class OpenScenarioParser(object):
                 args[osc_attribute(prop, 'name', 'string')] = osc_attribute(prop, 'value', 'string')
 
         override_action = xml_tree.find('OverrideControllerValueAction')
-        for child in override_action:
+        for child in (override_action if override_action is not None else []):
             if osc_attribute(child, 'active', 'boolean'):
                 raise NotImplementedError("Controller override actions are not yet supported")
 
